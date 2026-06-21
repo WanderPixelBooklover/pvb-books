@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pittsburgh Used Books & Book Sales — Map + Schedule</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<style>
+  :root{
+    color-scheme:light;
+    --used:#2563eb; --new:#64748b; --nook:#059669; --sale:#ea580c; --big:#dc2626; --marker:#7c3aed;
+    --ink:#1f2937; --muted:#6b7280; --line:#e5e7eb; --bg:#f8fafc;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg)}
+  header{padding:13px 18px 11px;background:#fff;border-bottom:1px solid var(--line)}
+  header h1{margin:0;font-size:19px}
+  header p{margin:4px 0 0;font-size:12.5px;color:var(--muted)}
+  .tag{display:inline-block;font-size:10px;font-weight:700;color:#fff;border-radius:4px;padding:1px 5px;vertical-align:middle}
+  .muted{color:var(--muted)}
+  /* weekend overlay floats over the map (native <details> toggle) */
+  details.wkbox{background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.18);width:252px;max-width:74vw;max-height:72vh;overflow:auto;font-size:12px}
+  .wk-h{display:flex;align-items:center;gap:6px;padding:8px 10px;cursor:pointer;position:sticky;top:0;background:rgba(255,255,255,.98);border-bottom:1px solid var(--line);list-style:none;user-select:none}
+  .wk-h::-webkit-details-marker{display:none}
+  .wk-h b{font-size:13px}
+  .wk-h .when{color:var(--muted);font-size:11px}
+  .wk-h::after{content:'–';margin-left:auto;color:var(--muted);font-weight:700;font-size:16px;line-height:1}
+  details.wkbox:not([open]) .wk-h::after{content:'+'}
+  details.wkbox:not([open]){overflow:hidden}
+  .wk-b{padding:8px 10px}
+  .wk-sec{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:2px 0 4px}
+  .wk-sec.mt{margin-top:10px}
+  .wkbox ul{margin:0 0 2px;padding:0;list-style:none;line-height:1.45}
+  .wkbox li{margin-bottom:4px}
+  .wkbox a{color:var(--used);text-decoration:none}
+  .wkbox a:hover{text-decoration:underline}
+  .wrap{display:flex;height:calc(100vh - 64px);min-height:460px}
+  #map{flex:1 1 58%;min-width:0}
+  .panel{flex:1 1 42%;max-width:560px;overflow-y:auto;border-left:1px solid var(--line);background:#fff}
+  .controls{position:sticky;top:0;background:#fff;padding:12px 14px;border-bottom:1px solid var(--line);z-index:5}
+  .controls input[type=search]{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px;margin-bottom:8px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{font-size:12px;padding:5px 9px;border:1px solid var(--line);border-radius:999px;cursor:pointer;user-select:none;background:#fff;display:inline-flex;align-items:center;gap:5px}
+  .chip.off{opacity:.38}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+  .areafilter{margin-top:8px;font-size:12px;color:var(--muted)}
+  .areafilter select{font-size:12px;padding:4px 6px;border:1px solid var(--line);border-radius:6px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{position:sticky;top:0;background:#f1f5f9;cursor:pointer;font-size:12px;white-space:nowrap}
+  th:hover{background:#e2e8f0}
+  tbody tr{cursor:pointer}
+  tbody tr:hover{background:#f8fafc}
+  .name{font-weight:600}
+  .badge{display:inline-block;font-size:10px;font-weight:700;color:#fff;border-radius:4px;padding:1px 6px;white-space:nowrap}
+  .sub{color:var(--muted);font-size:11.5px}
+  .count{font-size:12px;color:var(--muted);padding:8px 14px}
+  .leaflet-popup-content{font-size:13px;line-height:1.42}
+  .leaflet-popup-content .pname{font-weight:700;font-size:14px}
+  .leaflet-popup-content a{color:var(--used)}
+  .pin{border:2px solid #fff;border-radius:50% 50% 50% 0;width:18px;height:18px;transform:rotate(-45deg);box-shadow:0 1px 4px rgba(0,0,0,.4)}
+  .pin.big{width:24px;height:24px;border-width:3px}
+  .legend{background:#fff;padding:8px 10px;border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.2);font-size:12px;line-height:1.7}
+  .footnote{padding:12px 14px;font-size:12px;color:var(--muted);border-top:1px solid var(--line)}
+  .footnote a{color:var(--used)}
+  @media(max-width:820px){.wrap{flex-direction:column;height:auto}#map{height:58vh;flex:none}.panel{max-width:none;border-left:none;border-top:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<header>
+  <h1>📚 Pittsburgh Used Books &amp; Book Sales</h1>
+  <p>Used bookstores, year-round library/charity book nooks, and dated book sales within ~1 hr of Pittsburgh, plus the Erie / Van Buren Point corridor. Each pin links to the store or sale page. Click a pin or a row for details.</p>
+</header>
+
+<div class="wrap">
+  <div id="map"></div>
+  <div class="panel">
+    <div class="controls">
+      <input type="search" id="search" placeholder="Search name, town, or notes…" />
+      <div class="chips" id="typeChips"></div>
+      <div class="areafilter">Area:
+        <select id="areaSel">
+          <option value="">All areas</option>
+          <option value="Pittsburgh metro">Pittsburgh metro (~1 hr)</option>
+          <option value="Erie corridor">Erie corridor (I-79 north)</option>
+          <option value="Van Buren Point / Chautauqua">Van Buren Point / Chautauqua NY</option>
+        </select>
+      </div>
+    </div>
+    <div class="count" id="count"></div>
+    <table>
+      <thead><tr>
+        <th data-k="name">Place</th>
+        <th data-k="catRank">Type</th>
+        <th data-k="when">When</th>
+        <th data-k="price">Price</th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="footnote">
+      <strong>Facebook Marketplace:</strong> live listings can't be embedded (login + constantly changing), but these saved searches open current book listings:
+      <a href="https://www.facebook.com/marketplace/pittsburgh/search/?query=books" target="_blank">Books — Pittsburgh</a> ·
+      <a href="https://www.facebook.com/marketplace/pittsburgh/search/?query=book%20lot" target="_blank">Book lots</a> ·
+      <a href="https://www.facebook.com/marketplace/pittsburgh/search/?query=rare%20books" target="_blank">Rare books</a>.
+      <br><br>
+      <strong>Re-check dates:</strong> many library/charity sales post exact dates only a few weeks ahead. Good aggregators:
+      <a href="https://www.booksalefinder.com/PA.html" target="_blank">BookSaleFinder PA</a> ·
+      <a href="https://www.booksalefinder.com/NY.html" target="_blank">NY</a>.
+      Entries marked “confirm” weren’t posted at build time (June 2026).
+      <br><br>
+      <strong>Other places to hunt sales:</strong>
+      <a href="https://carnegielibrary.libcal.com/calendar?cid=-1&t=g&d=0000-00-00&cal=-1&inc=0" target="_blank">CLP LibCal</a> &amp; other library calendars ·
+      <a href="https://www.eventbrite.com/d/pa--pittsburgh/book-sale/" target="_blank">Eventbrite “book sale”</a> ·
+      <a href="https://www.facebook.com/events/search/?q=book%20sale%20pittsburgh" target="_blank">Facebook Events</a> ·
+      <a href="https://www.estatesales.net/PA/Pittsburgh" target="_blank">EstateSales.net</a> (estate/library sales) ·
+      <a href="https://www.reddit.com/r/pittsburgh/search/?q=book%20sale" target="_blank">r/Pittsburgh</a>.
+      Friends-of-the-Library Facebook pages and church/school rummage sales are also worth following.
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+const HEX={used:"#2563eb",new:"#64748b",nook:"#059669",sale:"#ea580c",big:"#dc2626",marker:"#7c3aed"};
+const CATLABEL={used:"Used",new:"New",nook:"Nook",sale:"Sale"};
+const CATRANK={used:1,new:2,nook:3,sale:4};
+const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+// cat: used | new | nook | sale | marker.  days: weekdays open (0=Sun..6=Sat).
+// start/end: confirmed 2026 ISO dates for a dated sale. approxMonth: month (1-12) when exact dates unknown.
+const DATA=[
+// ===== Used bookstores =====
+{name:"Caliban Book Shop",cat:"used",area:"Pittsburgh metro",addr:"410 S Craig St, Oakland, Pittsburgh 15213",lat:40.4462,lng:-79.9505,days:[0,1,2,3,4,5,6],when:"Daily ~12–5:30pm (Late-Nite Thursdays)",price:"Varies",size:"~40,000 used & rare + vinyl",notes:"Pittsburgh's flagship used/rare shop; literature, philosophy, Pgh history.",url:"https://www.calibanbooks.com/"},
+{name:"Amazing Books & Records — Squirrel Hill",cat:"used",area:"Pittsburgh metro",addr:"5858 Forbes Ave, Squirrel Hill, Pittsburgh 15217",lat:40.4378,lng:-79.9223,days:[0,1,2,3,4],when:"Sun–Thu (closed Fri evening through Sat for Sabbath)",price:"Used + new; free book/record per 3 bought",size:"Used + records",notes:"Note the Friday-eve to Saturday-night closure.",url:"http://www.amazingbooksandrecords.com/hours--locations.html"},
+{name:"Amazing Books & Records — Downtown",cat:"used",area:"Pittsburgh metro",addr:"320 Smithfield St, Downtown, Pittsburgh 15222",lat:40.4399,lng:-79.9987,days:[0,1,2,3,4,5,6],when:"Mon–Sun (Thu–Sat 10–7, Sun 11–4)",price:"Used + new",size:"Used + records",notes:"Downtown location.",url:"http://www.amazingbooksandrecords.com/hours--locations.html"},
+{name:"City Books",cat:"used",area:"Pittsburgh metro",addr:"908 Galveston Ave, North Side, Pittsburgh 15233",lat:40.4530,lng:-80.0150,days:[3,4,5,6,0],when:"Wed–Sun 11–5 (Mon–Tue closed)",price:"Varies",size:"New, used, rare",notes:"Pittsburgh's oldest used bookshop (est. 1980s); fiction & poetry.",url:"https://citybookspgh.com/"},
+{name:"Shadyside Books",cat:"used",area:"Pittsburgh metro",addr:"5900 Ellsworth Ave (2nd fl, Caboodle Trading Post), Shadyside 15232",lat:40.4555,lng:-79.9300,days:[0,1,2,3,4,5,6],when:"Daily ~12–7 (small shop — call to confirm)",price:"Varies",size:"5,000+ used",notes:"First editions in history, arts & sciences.",url:"https://www.shadysidebooks.com/about.php"},
+{name:"Beyond Bedtime Books",cat:"used",area:"Pittsburgh metro",addr:"1453 Potomac Ave, Dormont 15216",lat:40.3935,lng:-80.0335,days:[1,2,3,4,5,6],when:"Mon–Sat 11–4",price:"Varies",size:"New + gently used + rare",notes:"Dormont favorite with a strong children's room. (On Potomac Ave, near the T.)",url:"https://beyondbedtimebooks.com/"},
+{name:"Bottom Feeder Books",cat:"used",area:"Pittsburgh metro",addr:"415 Gettysburg St, Pittsburgh 15206 (East Liberty/Highland Park)",lat:40.4665,lng:-79.9230,days:[4,5,6,0],when:"Thu–Sun 12–6",price:"Varies (cheap)",size:"Curated used & rare",notes:"Art, photography, literature; gallery in back.",url:"https://www.bottomfeederbooks.com/"},
+{name:"Fungus Books & Records",cat:"used",area:"Pittsburgh metro",addr:"700½ S Trenton Ave, Wilkinsburg / Regent Square 15221",lat:40.4320,lng:-79.8865,days:[3,4,5,6,0],when:"Wed–Fri 11–5, Sat 10–5, Sun 11–3",price:"Varies",size:"Rare/used books & records",notes:"Counterculture specialty: poetry, art, punk/experimental, pulp.",url:"https://www.fungusbooks.com/"},
+{name:"Half Price Books — Ross Twp",cat:"used",area:"Pittsburgh metro",addr:"4932 McKnight Rd, Ross Twp, Pittsburgh 15237",lat:40.5345,lng:-80.0150,days:[0,1,2,3,4,5,6],when:"Daily ~10–8",price:"Mostly used, low prices",size:"Large chain store",notes:"Big used selection + some new. (The former Robinson location is closed.)",url:"https://www.hpb.com/store?storeid=HPB-062"},
+{name:"Rickert & Beagle Books",cat:"used",area:"Pittsburgh metro",addr:"3233 W Liberty Ave, Dormont 15216",lat:40.3945,lng:-80.0250,when:"Call / see Facebook for hours",price:"Varies",size:"Used & rare",notes:"Sci-fi, fantasy, horror & mystery specialist (successor to Eljay's).",url:"https://www.yelp.com/biz/rickert-and-beagle-books-pittsburgh"},
+{name:"The Big Idea Bookstore & Café",cat:"used",area:"Pittsburgh metro",addr:"4812 Liberty Ave, Bloomfield, Pittsburgh 15224",lat:40.4628,lng:-79.9470,when:"See site for hours",price:"New & used",size:"Collective shop",notes:"Anarchist/radical collective; new & used books, zines.",url:"https://thebigideapgh.com/"},
+{name:"Material Books",cat:"used",area:"Pittsburgh metro",addr:"Lawrenceville Market House, 4314 Main St, Pittsburgh 15201",lat:40.4655,lng:-79.9650,status:"uncertain",when:"On hiatus — confirm via Instagram before going",price:"Varies",size:"Specialist used",notes:"Film, photography, urban design, Pittsburgh titles. Between spaces as of build time.",url:"https://www.instagram.com/material.books/"},
+
+// ===== New bookstores (not used — included for browsing, toggle off if you only want used) =====
+{name:"Stay Gold Books",cat:"new",area:"Pittsburgh metro",addr:"1104 S Braddock Ave, Regent Square, Pittsburgh 15218",lat:40.4308,lng:-79.8930,days:[1,2,3,4,5,6,0],when:"Mon–Fri 11–8, Sat 12–8, Sun 11–6",price:"New retail",size:"Indie",notes:"New books + gifts; strong local-author focus (opened 2024).",url:"https://www.staygoldbooks.com/"},
+{name:"Mystery Lovers Bookshop",cat:"new",area:"Pittsburgh metro",addr:"514 Allegheny River Blvd, Oakmont 15139",lat:40.5225,lng:-79.8430,days:[1,2,3,4,5,6],when:"Mon–Fri 11–6, Sat 10–5",price:"New (some used)",size:"Genre specialist",notes:"Mystery/crime specialist; author events.",url:"https://www.mysterylovers.com/address-hours"},
+{name:"Riverstone Books — McCandless",cat:"new",area:"Pittsburgh metro",addr:"8850 Covenant Ave, McCandless 15237",lat:40.5865,lng:-80.0050,days:[0,1,2,3,4,5,6],when:"Mon–Fri 10–7, Sat 10–8, Sun 11–5",price:"New retail",size:"Largest indie in Pgh",notes:"New books; big children's section.",url:"https://www.riverstonebookstore.com/"},
+{name:"Riverstone Books — Squirrel Hill",cat:"new",area:"Pittsburgh metro",addr:"5841 Forbes Ave, Squirrel Hill, Pittsburgh 15217",lat:40.4382,lng:-79.9215,days:[0,1,2,3,4,5,6],when:"Mon–Fri 11–8, Sat 10–8, Sun 11–5",price:"New retail",size:"Indie",notes:"Former Classic Lines, now Riverstone (new books).",url:"https://www.riverstonebookstore.com/"},
+{name:"White Whale Bookstore",cat:"new",area:"Pittsburgh metro",addr:"4754 Liberty Ave, Bloomfield, Pittsburgh 15224",lat:40.4625,lng:-79.9485,days:[0,1,2,3,4,5,6],when:"See site (roughly Tue–Sun)",price:"New retail",size:"Indie + events",notes:"NEW books (not used); award-winning, strong events program.",url:"https://whitewhalebookstore.com/"},
+{name:"Penguin Bookshop",cat:"new",area:"Pittsburgh metro",addr:"417 Beaver St, Sewickley 15143",lat:40.5360,lng:-80.1840,days:[1,2,3,4,5,6,0],when:"Mon–Sat 10–5, Sun 12–3",price:"New retail",size:"Indie (long-running)",notes:"NEW books; Sewickley cornerstone.",url:"https://penguinbookshop.com/current-store-info"},
+
+// ===== Year-round library / charity book nooks =====
+{name:"Whitehall — New Chapter Bookstore",cat:"nook",area:"Pittsburgh metro",addr:"Whitehall Public Library, 100 Borough Park Dr, Pittsburgh 15234",lat:40.3680,lng:-80.0210,days:[1,2,3,4,5,6],when:"Mon–Thu 10–8, Fri 1–5, Sat 10–5",price:"Low (books, DVDs, CDs)",size:"Year-round in-library store",notes:"Named volunteer-run store, open whenever the library is.",url:"https://whitehallpubliclibrary.org/services/spaces/new-chapter-bookstore/"},
+{name:"Mt. Lebanon — The Book Cellar",cat:"nook",area:"Pittsburgh metro",addr:"Mt. Lebanon Public Library, 16 Castle Shannon Blvd 15228",lat:40.3755,lng:-80.0490,days:[1,2,3,4,5,6],when:"Mon–Thu 10–8, Fri–Sat 10–4 (+ 24/7 online store)",price:"Affordable used",size:"Lower-level store",notes:"Restocked weekly; separate online inventory.",url:"https://mtlebanonlibrary.org/190/The-Book-Cellar"},
+{name:"Community Library of Allegheny Valley",cat:"nook",area:"Pittsburgh metro",addr:"1522 Broadview Blvd, Natrona Heights 15065",lat:40.6280,lng:-79.7180,days:[1,2,3,4,5,6],when:"During library hours (Mon–Thu 10–7, Fri 10–3, Sat 9–4)",price:"PB $1, HC $2, magazines 20¢, CDs/DVDs $1",size:"Ongoing shelves",notes:"Dedicated book-sale area, year-round.",url:"https://www.alleghenyvalleylibrary.org/book-sale/"},
+{name:"Peters Township — The Open Book Store",cat:"nook",area:"Pittsburgh metro",addr:"Peters Township Public Library, 616 E McMurray Rd, McMurray 15317",lat:40.2890,lng:-80.0890,days:[1,2,3,4,5,6],when:"During library hours (Mon–Thu 9–8, Fri–Sat 9–4)",price:"Affordable used",size:"Lobby store",notes:"\"Only used bookstore in the Peters Township area.\"",url:"https://ptlibrary.org/ways-to-donate/open-bookstore/"},
+{name:"Frank Sarris Library — book section",cat:"nook",area:"Pittsburgh metro",addr:"35 N Jefferson Ave, Canonsburg 15317",lat:40.2630,lng:-80.1870,days:[1,2,3,4,5,6],when:"Mon–Fri 10–6, Sat 10–3",price:"Inexpensive used",size:"Ongoing section",notes:"Restocked regularly.",url:"https://www.franksarrislibrary.org/"},
+{name:"CitiBooks (Citizens Library)",cat:"nook",area:"Pittsburgh metro",addr:"55 S College St, Washington, PA 15301",lat:40.1730,lng:-80.2470,days:[2,3,4,6],when:"Tue–Thu 10–4, Sat 10–2",price:"Gently used",size:"In-library store",notes:"Friends-run; proceeds to the library.",url:"https://www.citlib.org/citibooks"},
+{name:"Ligonier — Re-Readables",cat:"nook",area:"Pittsburgh metro",addr:"Ligonier Valley Library, 120 W Main St, Ligonier 15658",lat:40.2440,lng:-79.2360,days:[1,2,3,4,5,6],when:"During library hours (Mon–Sat)",price:"Low",size:"In-library area",notes:"Don't confuse with Second Chapter Books (separate shop nearby).",url:"https://www.ligonierlibrary.org/"},
+{name:"New Castle — The Book Cellar",cat:"nook",area:"Pittsburgh metro",addr:"New Castle Public Library, 207 E North St, New Castle 16101",lat:41.0030,lng:-80.3470,days:[4,5,6],when:"Thu 10–4:30, Fri 10–4, Sat 10–2",price:"Low + gift items",size:"In-library store",notes:"Friends-run.",url:"https://www.ncdlc.org/friends-book-cellar"},
+{name:"YWCA Book Cellar (Greensburg)",cat:"nook",area:"Pittsburgh metro",addr:"YWCA Westmoreland, 424 N Main St, Greensburg 15601",lat:40.3050,lng:-79.5390,days:[1,2,3,4],when:"Mon 4–7, Tue–Thu 10–2, 1st Sat 10–2",price:"PB 50¢, HC $1, $5/bag",size:"Year-round store",notes:"Donation shed 24/7. (Earlier 'closed' notice was seasonal.)",url:"https://www.ywcawestmoreland.org/what-we-offer"},
+{name:"Northland — Book Nook",cat:"nook",area:"Pittsburgh metro",addr:"Northland Public Library, 300 Cumberland Rd, McCandless 15237",lat:40.5842,lng:-80.0492,days:[0,1,2,3,4,5,6],when:"Year-round, lower level (during library hours)",price:"Low",size:"Ongoing store",notes:"Separate from the big spring/fall sales below.",url:"https://www.northlandlibrary.org/"},
+{name:"Oakmont — The Squirrel's Nest",cat:"nook",area:"Pittsburgh metro",addr:"Oakmont Carnegie Library, 700 Allegheny River Blvd, Oakmont 15139",lat:40.5230,lng:-79.8420,days:[1,2,3,4,5,6],when:"Year-round (during library hours); Big Bag $5 sales spring & fall",price:"Per-item; bag sales $5",size:"Lower-level store",notes:"Fiction/nonfiction, DVDs, CDs, puzzles + collectibles room.",url:"https://oakmontlibrary.org/departments/the-squirrels-nest/"},
+{name:"Western Allegheny — ongoing book sale",cat:"nook",area:"Pittsburgh metro",addr:"Western Allegheny Community Library, 181 Bateman Rd, Oakdale 15071",lat:40.3970,lng:-80.1850,days:[1,2,3,4,5,6],when:"Ongoing in-house sale (library hours); Fall bag sale",price:"Low; bag deals",size:"Ongoing + annual",notes:"Monthly themed section.",url:"https://www.westernalleghenylibrary.org/friends-of-the-library/ongoing-book-sale.html"},
+{name:"South Butler — Friends Book Shop",cat:"nook",area:"Pittsburgh metro",addr:"South Butler Community Library, 240 W Main St, Saxonburg 16056",lat:40.7530,lng:-79.8100,days:[1,2,3,4,5,6],when:"Year-round Friends Book Shop (library hours); $5/bag clearances Mar & fall",price:"Low; $5/bag clearance",size:"In-library + online",notes:"",url:"https://southbutlerlibrary.org/friends.htm"},
+{name:"Adams Memorial Library — Friends books",cat:"nook",area:"Pittsburgh metro",addr:"1112 Ligonier St, Latrobe 15650",lat:40.3210,lng:-79.3790,status:"uncertain",days:[1,2,3,4,6],when:"During library hours (confirm ongoing shelf — call)",price:"Low",size:"Friends shelf",notes:"Library open year-round; verify the ongoing used-book area by phone.",url:"https://www.adamslib.org/"},
+{name:"Second Read (Chippewa Branch)",cat:"nook",area:"Pittsburgh metro",addr:"Chippewa Branch Library, 2811 Darlington Rd, Beaver Falls 15010",lat:40.7560,lng:-80.3700,status:"uncertain",days:[1,2,3,4,6],when:"During branch hours (confirm — call)",price:"Low",size:"In-branch area",notes:"Branch confirmed open; verify the 'Second Read' used-book area.",url:"https://www.beaverlibraries.org/libraries/chippewa"},
+{name:"The Bookstore at Calvary",cat:"nook",area:"Pittsburgh metro",addr:"Calvary Episcopal Church, 315 Shady Ave, Pittsburgh 15206",lat:40.4567,lng:-79.9243,days:[0],when:"Sun 8:30am–1pm year-round; BIG used-book sale early–mid August",price:"Sale ~$1–$2",size:"Thousands at the Aug sale",notes:"Year-round shop is Sundays only. The big used-book sale (Parish Hall, Fri preview + ~10 days) is each August.",url:"https://www.calvarypgh.org/the-bookstore-at-calvary",approxMonth:8},
+
+// ===== Dated book sales =====
+{name:"Northland Library Book Sale",cat:"sale",big:true,area:"Pittsburgh metro",addr:"300 Cumberland Rd, McCandless 15237",lat:40.5840,lng:-80.0488,when:"Fall: Sept 25–28, 2026 (also spring, early May)",start:"2026-09-25",end:"2026-09-28",approxMonth:9,price:"Preview $10 (Sept 25, 5–7:30); low per-item; Sun $5/bag",size:"Large",notes:"Two sales a year. Fall 2026 = Sept 25–28; spring was May 1–3.",url:"https://northlandpl.librarycalendar.com/event/fall-book-sale-3524"},
+{name:"AAUW Murrysville Spring Book & Puzzle Sale",cat:"sale",big:true,area:"Pittsburgh metro",addr:"Murrysville Community Library, 4130 Sardis Rd, Murrysville 15668",lat:40.4300,lng:-79.6900,when:"Spring (early May)",approxMonth:5,price:"Low",size:"~9,000 books + puzzles",notes:"2026 exact dates not yet posted at build time.",url:"https://murrysville-pa.aauw.net/book-sale/"},
+{name:"Newman Used Book Sale (St. Thomas More)",cat:"sale",big:true,area:"Pittsburgh metro",addr:"St. Thomas More Parish, 1200 Oakland Ave, Indiana, PA 15701",lat:40.6150,lng:-79.1620,when:"3rd weekend of September (≈Sept 18–20, 2026)",approxMonth:9,price:"Bargain used",size:"~100,000+ items",notes:"50+ year parish fundraiser; exact 2026 dates posted closer to time. (~1 hr 15 min east.)",url:"https://www.facebook.com/NewmanUsedBookSale/"},
+{name:"Sewickley Academy Clothesline & Book Sale",cat:"sale",area:"Pittsburgh metro",addr:"315 Academy Ave, Sewickley 15143",lat:40.5380,lng:-80.1820,when:"Mid-September (Thu–Mon)",approxMonth:9,price:"Bargain",size:"Large annual",notes:"Primarily a clothing sale; used books/DVDs/CDs are one part.",url:"https://www.sewickley.org/"},
+{name:"Friends of Sewickley Public Library Sale",cat:"sale",area:"Pittsburgh metro",addr:"500 Thorn St, Sewickley 15143",lat:40.5410,lng:-80.1840,when:"Fall: Sept 5–7, 2026 (also Feb & June); Sun $5/bag",start:"2026-09-05",end:"2026-09-07",approxMonth:9,price:"Low; Sun $5/bag",size:"3×/year",notes:"Three sales a year (Feb, June, Sept).",url:"https://sewickley.librarycalendar.com/event/book-sale"},
+{name:"Cranberry Library Book Sale",cat:"sale",area:"Pittsburgh metro",addr:"2525 Rochester Rd, Cranberry Twp 16066",lat:40.6920,lng:-80.1070,when:"Spring (Apr 17–19, 2026) + fall",start:"2026-04-17",end:"2026-04-19",approxMonth:4,price:"Adult books $1; Sun discounted",size:"Thousands",notes:"",url:"https://www.cranberrylibrary.org/"},
+{name:"Friends of South Park Library Sale",cat:"sale",area:"Pittsburgh metro",addr:"South Park Community Center, 2575 Brownsville Rd, South Park 15129",lat:40.2970,lng:-79.9990,when:"Spring (Apr 23–25, 2026) & fall; Sat $5/bag",start:"2026-04-23",end:"2026-04-25",approxMonth:4,price:"Sat $5/bag",size:"Semi-annual",notes:"Held in the Community Center next to the library.",url:"https://southpark.librarycalendar.com/event/friends-library-spring-book-sale-111"},
+{name:"Robinson Township Library Sale",cat:"sale",area:"Pittsburgh metro",addr:"5440 Campbells Run Rd, Pittsburgh 15205",lat:40.4470,lng:-80.1050,when:"Spring (April; 2026 dates TBA); Sat $5/bag",approxMonth:4,price:"Sat $5/bag",size:"Annual",notes:"2026 dates not yet on the library calendar.",url:"https://robinsontownship.librarycalendar.com/event/friends-library-book-sale-1162"},
+{name:"Dormont Library Book Sale",cat:"sale",area:"Pittsburgh metro",addr:"2950 W Liberty Ave, Dormont 15216",lat:40.3915,lng:-80.0370,when:"Fall (Sept 25–27, 2026); also spring",start:"2026-09-25",end:"2026-09-27",approxMonth:9,price:"Low; Fri member night",size:"Semi-annual",notes:"Year-round 'Book Nook' shelf on the 1st floor too.",url:"https://dormontlibrary.org/en/booksale/"},
+{name:"Castle Shannon Friends Book Sale",cat:"sale",area:"Pittsburgh metro",addr:"Community Library of Castle Shannon, 3677 Myrtle Ave 15234",lat:40.3640,lng:-80.0220,when:"Spring & fall (see Friends 2026 calendar)",approxMonth:9,price:"Low; final-day $5 bag",size:"Semi-annual",notes:"Exact dates are in the Friends' 2026 calendar.",url:"https://castleshannonlibrary.org/friends-of-the-library/"},
+{name:"Scott Township Library Sale",cat:"sale",area:"Pittsburgh metro",addr:"Scott Twp Municipal Building (library: 301 Lindsay Rd, Carnegie 15106)",lat:40.3870,lng:-80.0850,when:"Mid-October (Thu–Sun); Sun $5/bag",approxMonth:10,price:"Sun $5/bag; cash/check",size:"Annual",notes:"Held in the Municipal Building. Verify exact 2026 dates.",url:"https://scottlib.librarycalendar.com/event/friends-scott-township-public-library-book-sale-1214"},
+{name:"Green Tree Library Book Sale",cat:"sale",area:"Pittsburgh metro",addr:"Sycamore Room, 10 W Manilla Ave, Pittsburgh 15220",lat:40.4170,lng:-80.0440,when:"Mid-October (Thu preview $5)",approxMonth:10,price:"Preview $5; low per-item",size:"Annual",notes:"In the Green Tree Municipal Center.",url:"https://www.greentreelibrary.org/event/friends-of-the-library-annual-used-book-sale-2/"},
+{name:"Carnegie Library Book Sale (Main/Oakland)",cat:"sale",area:"Pittsburgh metro",addr:"CLP – Main, 4400 Forbes Ave, Oakland, Pittsburgh 15213",lat:40.4395,lng:-79.9530,when:"~March 1, 9:30am–3pm (annual; confirm year)",approxMonth:3,price:"Accessible pricing",size:"Annual",notes:"At the Oakland Main branch; the library also runs a preview party and a 'Book Sale & Winter Market.' Confirm the exact date on the event page.",url:"https://www.carnegielibrary.org/event/book-sale/"},
+{name:"Friends of Monroeville Library Sale",cat:"sale",area:"Pittsburgh metro",addr:"4000 Gateway Campus Blvd, Monroeville 15146",lat:40.4280,lng:-79.7620,status:"uncertain",when:"Periodic (2026 dates TBA)",price:"Low",size:"Periodic",notes:"Friends active; no posted 2026 date at build time.",url:"https://www.monroevillepl.org/content/friends-library-book-sale"},
+{name:"Friends of Bayne Library Sale",cat:"sale",area:"Pittsburgh metro",addr:"34 N Balph Ave, Bellevue, Pittsburgh 15202",lat:40.4940,lng:-80.0560,status:"uncertain",when:"Periodic (2026 dates TBA)",price:"Low",size:"Periodic",notes:"Check the Friends events page.",url:"https://friendsofbaynelibrary.org/events/"},
+{name:"AAUW Washington Used Book Sale",cat:"sale",area:"Pittsburgh metro",addr:"(historically) Washington Crown Center, 1500 W Chestnut St, Washington 15301",lat:40.1720,lng:-80.2610,status:"uncertain",when:"Annual — could not confirm a current sale; verify",price:"—",size:"Historically ~10,000 books",notes:"No current web page found; confirm with the AAUW Washington branch before relying on it.",url:""},
+{name:"Friends of Scottdale Library Sale",cat:"sale",area:"Pittsburgh metro",addr:"Scottdale Public Library, 106 Spring St, Scottdale 15683",lat:40.1010,lng:-79.5870,status:"uncertain",when:"Annual — unconfirmed; call (724) 887-6140",price:"Low",size:"Annual",notes:"No sale date found at build time.",url:"https://www.scottdalelibrary.com/calendar"},
+
+// ===== Erie corridor (I-79 north) =====
+{name:"Great American Book Sale (Erie Friends)",cat:"sale",big:true,area:"Erie corridor",addr:"Flo Fabrizio Ice Center (Erie Zoo), 527 W 38th St, Erie 16508",lat:42.0905,lng:-80.0855,when:"June 14–19, 2026 (Sun–Fri)",start:"2026-06-14",end:"2026-06-19",approxMonth:6,price:"~$1; Fri reduced/bag",size:"~75,000 books",notes:"Biggest regional sale. Erie Friends also run Blasco Library sales: Feb 12–14, May 21–23, Oct 15–17.",url:"https://erielibraryfriends.org/book-sales/"},
+{name:"S-Book-Tacular (Erie Friends, Blasco)",cat:"sale",area:"Erie corridor",addr:"Blasco Memorial Library, 160 E Front St, Erie 16507",lat:42.1320,lng:-80.0790,when:"Oct 15–17, 2026",start:"2026-10-15",end:"2026-10-17",approxMonth:10,price:"Low",size:"Smaller Friends sale",notes:"One of several Blasco Library Friends sales through the year.",url:"https://erielibraryfriends.org/book-sales/"},
+{name:"Books Galore",cat:"used",area:"Erie corridor",addr:"5546 Peach St, Erie 16509",lat:42.0820,lng:-80.0905,days:[0,1,2,3,4,5,6],when:"Mon–Sat 10–7, Sun 12–5",price:"Used, low prices",size:"~250,000 books + comics",notes:"Huge independent (used): sci-fi, comics, board games. 30+ years.",url:"https://eriebooksgalore.wixsite.com/home"},
+{name:"Werner Books & Coffee",cat:"used",area:"Erie corridor",addr:"3608 Liberty St (Liberty Plaza), Erie 16508",lat:42.1015,lng:-80.0815,days:[0,1,2,3,4,5,6],when:"Mon–Sun (café; see site for hours)",price:"New + used",size:"Community bookstore + café",notes:"",url:"https://www.wernerbooks.com/"},
+{name:"Tattered Corners Bookstore",cat:"used",area:"Erie corridor",addr:"247 Chestnut St, Meadville 16335",lat:41.6415,lng:-80.1520,days:[1,2,3,4,5,6],when:"Mon–Fri 10–5:30, Sat 10–3",price:"New & used; trade-in credit",size:"Since 2001",notes:"Same street as the Meadville library sale — easy combo stop.",url:"http://www.tatteredcorners.com/"},
+{name:"Friends of Meadville Library Sale",cat:"sale",area:"Erie corridor",addr:"Barco-Duratz Cultural Center, 411 Chestnut St, Meadville 16335",lat:41.6410,lng:-80.1510,when:"Spring & Fall (~November); Sat bag day",approxMonth:11,price:"Low; Sat bag/box day",size:"Annual",notes:"Right off I-79 toward Erie. 2026 dates not yet posted.",url:"https://meadvillelibrary.org/"},
+
+// ===== Van Buren Point / Chautauqua County, NY =====
+{name:"Van Buren Point (your lake spot)",cat:"marker",area:"Van Buren Point / Chautauqua",addr:"Van Buren Point, NY (Lake Erie)",lat:42.4480,lng:-79.4470,when:"—",price:"—",size:"Reference marker",notes:"The Chautauqua-area shops below are all a short drive from here.",url:""},
+{name:"The Next Chapter Bookstore",cat:"used",area:"Van Buren Point / Chautauqua",addr:"12 Park Place, Fredonia, NY 14063",lat:42.4400,lng:-79.3320,when:"Tue–Sat 10–5",days:[2,3,4,5,6],price:"Inexpensive used",size:"Thousands of used",notes:"Run by Literacy Volunteers of Chautauqua County; ~10 min from Van Buren Point.",url:"https://www.facebook.com/LVCCread/"},
+{name:"Chautauqua Rare Books & Antiques",cat:"used",area:"Van Buren Point / Chautauqua",addr:"10 Park Place, Fredonia, NY 14063",lat:42.4402,lng:-79.3318,status:"uncertain",when:"Seasonal / by chance — call (716) 672-8988",price:"Rare/antiquarian",size:"Small",notes:"Status unclear (one directory lists closed); call before visiting.",url:""},
+{name:"Genres Bookshop at the YWCA",cat:"used",area:"Van Buren Point / Chautauqua",addr:"58 S Portage St, Westfield, NY 14787",lat:42.3215,lng:-79.5775,days:[2,3,4,5],when:"Tue–Thu 12–6, Fri 9–5",price:"Inexpensive used",size:"Small shop in the YWCA",notes:"On the lakeshore route between Erie and Van Buren Point.",url:"https://www.tourchautauqua.com/directory/genres-bookshop-at-the-ywca"},
+{name:"Mumpsimus Books",cat:"used",area:"Van Buren Point / Chautauqua",addr:"53 E Main St, Ste B, Westfield, NY 14787",lat:42.3235,lng:-79.5755,days:[2,3,4,5,6],when:"Tue–Fri 11–5, Sat 10–4",price:"Used/rare paperbacks",size:"Specialist (sci-fi etc.)",notes:"Opened 2024; Westfield has a long book-town tradition.",url:"http://www.mumpsimusbooks.com"},
+{name:"Good Neighbor Bookstore (formerly Off the Beaten Path)",cat:"new",area:"Van Buren Point / Chautauqua",addr:"124 Chautauqua Ave, Lakewood, NY 14750",lat:42.1010,lng:-79.3345,days:[3,4,5,6],when:"Wed–Fri 11–5, Sat 10–5",price:"New retail",size:"Curated indie",notes:"Renamed & moved in 2022; now primarily NEW books. Near Jamestown / Chautauqua Lake.",url:"https://goodneighborbooks.com/"}
+];
+
+const map=L.map('map',{scrollWheelZoom:true}).setView([41.0,-79.7],8);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  maxZoom:19, attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+
+function colorOf(d){ return d.cat==="marker"?HEX.marker : (d.big?HEX.big:HEX[d.cat]); }
+function pinIcon(d){
+  return L.divIcon({className:'',html:`<div class="pin ${d.big?'big':''}" style="background:${colorOf(d)}"></div>`,
+    iconSize:[18,18], iconAnchor:[9,18], popupAnchor:[0,-16]});
+}
+function gmaps(d){return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(d.name+' '+d.addr)}`;}
+function typeText(d){ if(d.cat==="marker")return "Reference point"; if(d.cat==="sale")return d.big?"Big book sale":"Book sale"; if(d.cat==="nook")return "Library/charity nook (year-round)"; if(d.cat==="new")return "New bookstore"; return "Used bookstore"; }
+function popupHtml(d){
+  const link = d.url ? `<a href="${d.url}" target="_blank">Visit page ↗</a> &nbsp;·&nbsp; ` : '';
+  const unc = d.status==="uncertain" ? `<div style="color:${HEX.big};margin-top:3px">⚠ Confirm before visiting</div>` : '';
+  return `<div class="pname">${d.name}</div>
+   <div class="sub" style="margin:2px 0 6px">${d.addr}</div>
+   <div><b>Type:</b> ${typeText(d)}</div>
+   <div><b>When:</b> ${d.when}</div>
+   <div><b>Price:</b> ${d.price||'—'}${d.size?` &nbsp;·&nbsp; <b>Size:</b> ${d.size}`:''}</div>
+   ${d.notes?`<div style="margin-top:5px">${d.notes}</div>`:''}
+   ${unc}
+   <div style="margin-top:7px">${link}<a href="${gmaps(d)}" target="_blank">Google Maps ↗</a></div>`;
+}
+
+const markers=DATA.map(d=>{
+  const m=L.marker([d.lat,d.lng],{icon:pinIcon(d)}).bindPopup(popupHtml(d),{maxWidth:290});
+  m._d=d; return m;
+});
+const layer=L.layerGroup(markers).addTo(map);
+
+// legend
+const legend=L.control({position:'bottomright'});
+legend.onAdd=function(){const div=L.DomUtil.create('div','legend');
+  div.innerHTML=`<div><span class="dot" style="background:${HEX.used}"></span> Used bookstore</div>
+  <div><span class="dot" style="background:${HEX.new}"></span> New bookstore (not used)</div>
+  <div><span class="dot" style="background:${HEX.nook}"></span> Library/charity nook (year-round)</div>
+  <div><span class="dot" style="background:${HEX.sale}"></span> Book sale (dated)</div>
+  <div><span class="dot" style="background:${HEX.big}"></span> Big sale</div>`;
+  return div;};
+legend.addTo(map);
+
+// type chips
+const CATS=["used","new","nook","sale"];
+const CHIPTEXT={used:"Used stores",new:"New stores",nook:"Library nooks",sale:"Book sales"};
+const active=new Set(CATS);
+const chipBox=document.getElementById('typeChips');
+CATS.forEach(c=>{
+  const el=document.createElement('span');el.className='chip';
+  el.innerHTML=`<span class="dot" style="background:${HEX[c]}"></span>${CHIPTEXT[c]}`;
+  el.onclick=()=>{active.has(c)?active.delete(c):active.add(c);el.classList.toggle('off');render();};
+  chipBox.appendChild(el);
+});
+
+const tbody=document.getElementById('tbody');
+const searchEl=document.getElementById('search');
+const areaEl=document.getElementById('areaSel');
+let sortKey='catRank',sortDir=1;
+document.querySelectorAll('th').forEach(th=>th.onclick=()=>{
+  const k=th.dataset.k; if(sortKey===k)sortDir*=-1;else{sortKey=k;sortDir=1;} render();});
+
+function visible(d){
+  const area=areaEl.value;
+  if(d.cat==="marker") return (!area||d.area===area);
+  const q=searchEl.value.trim().toLowerCase();
+  return active.has(d.cat)
+    && (!area||d.area===area)
+    && (!q || (d.name+' '+d.addr+' '+(d.notes||'')+' '+d.when).toLowerCase().includes(q));
+}
+function render(){
+  const shown=DATA.filter(visible);
+  layer.clearLayers();
+  markers.filter(m=>shown.includes(m._d)).forEach(m=>layer.addLayer(m));
+  const rows=shown.filter(d=>d.cat!=="marker");
+  rows.sort((a,b)=>{
+    let va = sortKey==='catRank' ? (a.big?3.5:CATRANK[a.cat]) : (a[sortKey]||'').toString().toLowerCase();
+    let vb = sortKey==='catRank' ? (b.big?3.5:CATRANK[b.cat]) : (b[sortKey]||'').toString().toLowerCase();
+    return (va>vb?1:va<vb?-1:0)*sortDir;
+  });
+  tbody.innerHTML=rows.map(d=>{
+    const label=d.cat==="sale"?(d.big?'Big sale':'Sale'):(d.cat==="nook"?'Nook':d.cat==="new"?'New':'Used');
+    const warn=d.status==="uncertain"?' ⚠':'';
+    return `<tr data-n="${encodeURIComponent(d.name)}">
+      <td><div class="name">${d.name}${warn}</div><div class="sub">${d.addr}</div></td>
+      <td><span class="badge" style="background:${colorOf(d)}">${label}</span></td>
+      <td>${d.when}</td>
+      <td>${d.price||'—'}</td></tr>`;
+  }).join('');
+  [...tbody.children].forEach(tr=>tr.onclick=()=>{
+    const d=DATA.find(x=>x.name===decodeURIComponent(tr.dataset.n));
+    map.setView([d.lat,d.lng],13);
+    const mk=markers.find(m=>m._d===d); if(mk)mk.openPopup();
+  });
+  document.getElementById('count').textContent=`${rows.length} place${rows.length!==1?'s':''} shown`;
+}
+searchEl.oninput=render; areaEl.onchange=render;
+
+/* ---------- "This weekend" overlay (sales only) ---------- */
+function parseISO(s){const a=s.split('-').map(Number);return new Date(a[0],a[1]-1,a[2]);}
+function fmtMD(dt){return MONTHS[dt.getMonth()]+' '+dt.getDate();}
+function weekendRange(){
+  const now=new Date(); now.setHours(0,0,0,0);
+  const dow=now.getDay();
+  let sat=new Date(now);
+  if(dow===0){ sat.setDate(now.getDate()-1); }            // Sunday -> Sat was yesterday
+  else { sat.setDate(now.getDate()+((6-dow+7)%7)); }       // upcoming (or today if Sat) Saturday
+  const sun=new Date(sat); sun.setDate(sat.getDate()+1);
+  return [sat,sun];
+}
+function nextOccurrence(d){
+  const today=new Date(); today.setHours(0,0,0,0);
+  if(d.start){ const s=parseISO(d.start), e=d.end?parseISO(d.end):s; if(e>=today) return {date:s,confirmed:true,end:e}; }
+  if(d.approxMonth){
+    const y=today.getFullYear(), curM=today.getMonth()+1;
+    let past = (d.approxMonth < curM);
+    if(d.start){ const e=parseISO(d.end||d.start); if(e<today) past=true; } // this year's instance already over
+    const cand=new Date(past? y+1 : y, d.approxMonth-1, 1);
+    return {date:cand,confirmed:false};
+  }
+  return null;
+}
+function liFor(d, prefix='', suffix='', star=''){
+  const inner = d.url ? `<a href="${d.url}" target="_blank">${star}${d.name}</a>` : `${star}${d.name}`;
+  return `<li>${prefix}${inner}${suffix}</li>`;
+}
+const wkCtl=L.control({position:'topright'});
+wkCtl.onAdd=function(){
+  const div=L.DomUtil.create('div','wkwrap'); div.id='wkwrap';
+  L.DomEvent.disableClickPropagation(div); L.DomEvent.disableScrollPropagation(div);
+  return div;
+};
+wkCtl.addTo(map);
+function buildWeekend(){
+  const [sat,sun]=weekendRange();
+  // dated sales overlapping this weekend (confirmed dates only)
+  const salesNow=DATA.filter(d=>d.cat==='sale'&&d.start&&d.end)
+    .filter(d=>{const s=parseISO(d.start),e=parseISO(d.end); return s<=sun && e>=sat;});
+  const salesHtml = salesNow.length
+    ? '<ul>'+salesNow.map(d=>liFor(d,`<span class="tag" style="background:${colorOf(d)}">${d.big?'BIG':'SALE'}</span> `)).join('')+'</ul>'
+    : '<div class="muted" style="margin-bottom:2px">Nothing scheduled this weekend.</div>';
+  // coming up — next dated sales
+  const soon=DATA.filter(d=>d.cat==='sale').map(d=>({d,n:nextOccurrence(d)}))
+    .filter(x=>x.n).sort((a,b)=>a.n.date-b.n.date).slice(0,6);
+  const soonHtml='<ul>'+soon.map(({d,n})=>{
+    let when = n.confirmed ? (n.end && n.end>n.date ? `${fmtMD(n.date)}–${n.end.getDate()}` : fmtMD(n.date))
+                          : `~${MONTHS[n.date.getMonth()]} ${n.date.getFullYear()}`;
+    const star=d.big?'★ ':'';
+    return liFor(d,'',` <span class="muted">— ${when}${n.confirmed?'':' (approx)'}</span>`,star);
+  }).join('')+'</ul>';
+  document.getElementById('wkwrap').innerHTML=
+   `<details class="wkbox" open>
+      <summary class="wk-h"><b>📅 Book sales</b> <span class="when">${fmtMD(sat)}–${sun.getDate()}</span></summary>
+      <div class="wk-b">
+        <div class="wk-sec">This weekend</div>${salesHtml}
+        <div class="wk-sec mt">Coming up</div>${soonHtml}
+      </div>
+    </details>`;
+}
+
+render();
+buildWeekend();
+</script>
+</body>
+</html>
